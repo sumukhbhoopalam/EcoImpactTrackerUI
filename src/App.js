@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Box,
@@ -9,10 +9,22 @@ import {
   Grid,
   CircularProgress,
   Alert,
-  Autocomplete
+  Autocomplete,
+  Tabs,
+  Tab,
+  Card,
+  CardContent,
+  Rating
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import api from './services/api';
+
+function TabPanel({ children, value, index }) {
+  return (
+    <div hidden={value !== index} style={{ padding: '20px 0' }}>
+      {value === index && children}
+    </div>
+  );
+}
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,29 +32,40 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
+  const [tabValue, setTabValue] = useState(0);
+  const [categoryStats, setCategoryStats] = useState([]);
+  const [topEcoProducts, setTopEcoProducts] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [brandImpact, setBrandImpact] = useState(null);
 
-  // Load products for autocomplete
-  React.useEffect(() => {
-    const loadProducts = async () => {
+  // Load initial data
+  useEffect(() => {
+    const loadInitialData = async () => {
       try {
-        const data = await api.getAllProducts();
-        setProducts(data);
+        const [productsData, categoryData, ecoProductsData] = await Promise.all([
+          api.getAllProducts(),
+          api.getCategoryImpactStats(),
+          api.getTopEcoFriendlyProducts()
+        ]);
+        setProducts(productsData);
+        setCategoryStats(categoryData);
+        setTopEcoProducts(ecoProductsData);
       } catch (err) {
-        console.error('Error loading products:', err);
+        console.error('Error loading initial data:', err);
+        setError('Error loading data. Please refresh the page.');
       }
     };
-    loadProducts();
+    loadInitialData();
   }, []);
 
-  const handleSearch = async () => {
-    if (!searchQuery) return;
+  const handleSearch = async (productName) => {
+    if (!productName) return;
 
     setLoading(true);
     setError(null);
     try {
-      const result = await api.searchProduct(searchQuery);
+      const result = await api.searchProduct(productName);
       setProductData(result);
-      //await api.saveSearchHistory(searchQuery);
     } catch (err) {
       setError('Error searching for product. Please try again.');
       console.error('Search error:', err);
@@ -51,8 +74,23 @@ function App() {
     }
   };
 
+  const handleBrandSelect = async (brand) => {
+    if (!brand) return;
+    try {
+      const impact = await api.getBrandImpact(brand);
+      setBrandImpact(impact);
+    } catch (err) {
+      console.error('Error fetching brand impact:', err);
+      setError('Error fetching brand impact. Please try again.');
+    }
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
   return (
-    <Container maxWidth="md">
+    <Container maxWidth="lg">
       <Box sx={{ my: 4 }}>
         <Typography variant="h3" component="h1" gutterBottom align="center" color="primary">
           Eco Impact Tracker
@@ -62,28 +100,41 @@ function App() {
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={8}>
               <Autocomplete
-                freeSolo
+                id="product-search"
                 options={products}
                 getOptionLabel={(option) => 
-                  typeof option === 'string' ? option : `${option.name} - ${option.brand}`
+                  typeof option === 'string' ? option : `${option.productName} - ${option.brand}`
                 }
+                inputValue={searchQuery}
+                onInputChange={(event, newInputValue) => {
+                  setSearchQuery(newInputValue);
+                }}
+                onChange={(event, newValue) => {
+                  if (newValue) {
+                    setSearchQuery(newValue.productName);
+                    handleSearch(newValue.productName);
+                  }
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     fullWidth
                     label="Search by product name or brand"
                     variant="outlined"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 )}
-                onChange={(event, newValue) => {
-                  if (typeof newValue === 'string') {
-                    setSearchQuery(newValue);
-                  } else if (newValue) {
-                    setSearchQuery(newValue.name);
-                  }
-                }}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Box>
+                      <Typography>
+                        {option.productName} - {option.brand}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {option.category}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
               />
             </Grid>
             <Grid item xs={12} md={4}>
@@ -92,9 +143,9 @@ function App() {
                 variant="contained"
                 color="primary"
                 size="large"
-                onClick={handleSearch}
+                onClick={() => handleSearch(searchQuery)}
                 disabled={loading}
-                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SearchIcon />}
+                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
               >
                 Search
               </Button>
@@ -108,43 +159,125 @@ function App() {
           </Alert>
         )}
 
-        {productData && (
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom>
-              Product Details
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle1">
-                  <strong>Name:</strong> {productData.product.name}
-                </Typography>
-                <Typography variant="subtitle1">
-                  <strong>Brand:</strong> {productData.product.brand}
-                </Typography>
-                <Typography variant="subtitle1">
-                  <strong>Category:</strong> {productData.product.category}
-                </Typography>
+        <Tabs value={tabValue} onChange={handleTabChange} centered sx={{ mb: 2 }}>
+          <Tab label="Search Results" />
+          <Tab label="Categories" />
+          <Tab label="Brands" />
+        </Tabs>
+
+        <TabPanel value={tabValue} index={0}>
+          {productData && (
+            <Paper elevation={3} sx={{ p: 3 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h5" gutterBottom>
+                    Product Details
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Name:</strong> {productData.name}
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Brand:</strong> {productData.brand}
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Category:</strong> {productData.category}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" gutterBottom>
+                    Environmental Impact
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Carbon Footprint:</strong> {productData.carbonKg} kg CO₂
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Water Usage:</strong> {productData.waterLiters} liters
+                  </Typography>
+                  <Typography variant="subtitle1">
+                    <strong>Waste Generated:</strong> {productData.wasteKg} kg
+                  </Typography>
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle1" color="primary">
+                      <strong>Eco Impact Score:</strong> {productData.ecoImpactScore}
+                    </Typography>
+                  </Box>
+                </Grid>
               </Grid>
-              <Grid item xs={12} md={6}>
+            </Paper>
+          )}
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={1}>
+          <Grid container spacing={3}>
+            {categoryStats.map((category) => (
+              <Grid item xs={12} md={4} key={category.category}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      {category.category}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Avg Carbon: {category.avgCarbonKg.toFixed(2)} kg
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Avg Water: {category.avgWaterLiters.toFixed(2)} L
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Avg Waste: {category.avgWasteKg.toFixed(2)} kg
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper elevation={3} sx={{ p: 3 }}>
                 <Typography variant="h6" gutterBottom>
-                  Environmental Impact
+                  Select Brand
                 </Typography>
-                <Typography variant="subtitle1">
-                  <strong>Carbon Footprint:</strong> {productData.environmentalImpact.carbonKg} kg CO₂
-                </Typography>
-                <Typography variant="subtitle1">
-                  <strong>Water Usage:</strong> {productData.environmentalImpact.waterLiters} liters
-                </Typography>
-                <Typography variant="subtitle1">
-                  <strong>Waste Generated:</strong> {productData.environmentalImpact.wasteKg} kg
-                </Typography>
-                <Typography variant="subtitle1" color="primary" sx={{ mt: 1 }}>
-                  <strong>Eco Impact Score:</strong> {productData.ecoImpact.toFixed(2)}
-                </Typography>
-              </Grid>
+                <Autocomplete
+                  id="brand-select"
+                  options={[...new Set(products.map(p => p.brand))]}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Brand" variant="outlined" />
+                  )}
+                  onChange={(event, newValue) => {
+                    setSelectedBrand(newValue);
+                    handleBrandSelect(newValue);
+                  }}
+                />
+              </Paper>
             </Grid>
-          </Paper>
-        )}
+
+            {brandImpact && (
+              <Grid item xs={12} md={6}>
+                <Paper elevation={3} sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Brand Impact Analysis
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Total Carbon:</strong> {brandImpact.totalCarbonKg.toFixed(2)} kg
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Total Water:</strong> {brandImpact.totalWaterLiters.toFixed(2)} L
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Total Waste:</strong> {brandImpact.totalWasteKg.toFixed(2)} kg
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Products:</strong> {brandImpact.productCount}
+                  </Typography>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </TabPanel>
+
+       
       </Box>
     </Container>
   );

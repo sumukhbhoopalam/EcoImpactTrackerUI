@@ -41,22 +41,30 @@ const api = {
     }
   },
 
-  // Search History related endpoints
-  getSearchHistory: async () => {
+  // Category Impact Stats
+  getCategoryImpactStats: async () => {
     try {
-      const response = await axiosInstance.get('/search-history');
+      const response = await axiosInstance.get('/categories/impact-stats');
       return response.data;
     } catch (error) {
       throw error;
     }
   },
 
-  saveSearchHistory: async (searchQuery) => {
+  // Brand Impact
+  getBrandImpact: async (brand) => {
     try {
-      const response = await axiosInstance.post('/search-history', {
-        searchQuery,
-        timestamp: new Date().toISOString()
-      });
+      const response = await axiosInstance.get(`/brands/${encodeURIComponent(brand)}/impact`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Top Eco-Friendly Products
+  getTopEcoFriendlyProducts: async (limit = 10) => {
+    try {
+      const response = await axiosInstance.get(`/products/eco-friendly?limit=${limit}`);
       return response.data;
     } catch (error) {
       throw error;
